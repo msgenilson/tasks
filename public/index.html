@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tasks</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tasks" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <!-- Aplica tema antes de renderizar para evitar flash -->
+  <script>
+    if (localStorage.getItem("kanban_theme") === "light")
+      document.documentElement.classList.add("theme-light");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="auth-screen" class="auth-screen hidden"></div>
+
+  <div id="app" class="app hidden">
+    <nav id="navbar" class="navbar">
+      <div class="navbar-left">
+        <span class="app-name">Tasks</span>
+      </div>
+      <div class="navbar-center">
+        <div id="workspace-selector" class="workspace-selector"></div>
+        <span class="navbar-sep"></span>
+        <div id="project-dropdown" class="project-dropdown"></div>
+      </div>
+      <div class="navbar-right">
+        <div class="user-menu-wrap" id="user-menu-wrap">
+          <button id="user-menu-btn" class="user-menu-btn" title="Conta"></button>
+          <div id="user-menu" class="user-menu hidden"></div>
+        </div>
+      </div>
+    </nav>
+
+    <main id="board-area" class="board-area"></main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script type="module" src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js");
+    }
+  </script>
+</body>
+</html>
