@@ -71,6 +71,7 @@ let _workspaces = [];
 let _open       = false;
 let _confirmId  = null;
 let _renameId   = null;
+let _loaded     = false;
 
 const LS_KEY = "tasks_active_workspace";
 
@@ -120,6 +121,7 @@ export function destroyWorkspaces() {
   _open       = false;
   _confirmId  = null;
   _renameId   = null;
+  _loaded     = false;
   const el = document.getElementById("workspace-selector");
   if (el) el.innerHTML = "";
 }
@@ -187,6 +189,12 @@ function _renderContent() {
   trigger.textContent = initial;
   trigger.title       = active?.name ?? "Workspaces";
   trigger.style.color = color;
+
+  if (!_loaded) {
+    _loaded = true;
+    const sel = document.getElementById("workspace-selector");
+    if (sel) sel.classList.add("navbar-item-loaded");
+  }
 
   if (!_open) {
     menu.classList.add("hidden");

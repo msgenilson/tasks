@@ -88,6 +88,7 @@ let _open        = false;
 let _confirmId   = null;
 let _editId      = null;
 let _prevSelected = null;
+let _loaded       = false;
 
 function _lsKey() { return `tasks_active_project_${_workspaceId}`; }
 
@@ -138,6 +139,7 @@ export function destroyProjects() {
   _confirmId    = null;
   _editId       = null;
   _prevSelected = null;
+  _loaded       = false;
   const el = document.getElementById("project-dropdown");
   if (el) el.innerHTML = "";
 }
@@ -203,6 +205,14 @@ function _renderContent() {
   const active = _projects.find((p) => p.id === _activeId);
   nameEl.textContent =
     active?.name ?? (_projects.length === 0 ? "Sem projetos" : "Selecionar");
+
+  if (!_loaded) {
+    _loaded = true;
+    const drop = document.getElementById("project-dropdown");
+    const sep  = document.querySelector(".navbar-sep");
+    if (drop) drop.classList.add("navbar-item-loaded", "navbar-item-loaded--delay");
+    if (sep)  sep.classList.add("navbar-item-loaded", "navbar-item-loaded--delay");
+  }
 
   if (!_open) {
     menu.classList.add("hidden");

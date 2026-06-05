@@ -814,6 +814,51 @@ html, body {
 .theme-light .user-menu-item:hover { background: rgba(0,0,0,0.05); }
 .user-menu-item--danger { color: var(--danger); }
 
+/* ── Board loading spinner ────────────────────────────────────────────────── */
+
+.board-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+}
+
+@keyframes board-spin {
+  to { transform: rotate(360deg); }
+}
+
+.board-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-muted);
+  border-radius: 50%;
+  animation: board-spin 0.75s linear infinite;
+}
+
+/* ── Column & card appear animations ─────────────────────────────────────── */
+
+@keyframes col-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.col-appear {
+  opacity: 0;
+  animation: col-appear 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.card-appear {
+  opacity: 0;
+  animation: card-appear 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* ── Skeleton ─────────────────────────────────────────────────────────────── */
 
 @keyframes sk-pulse {
@@ -1516,6 +1561,26 @@ html, body {
   height: 18px;
   background: var(--border);
   flex-shrink: 0;
+}
+
+/* Navbar center items — appear after data loads */
+#workspace-selector,
+.navbar-sep,
+#project-dropdown {
+  opacity: 0;
+}
+
+@keyframes navbar-item-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.navbar-item-loaded {
+  animation: navbar-item-appear 0.35s ease forwards;
+}
+
+.navbar-item-loaded--delay {
+  animation-delay: 80ms;
 }
 
 /* ── Mobile ───────────────────────────────────────────────────────────────── */

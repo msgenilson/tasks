@@ -59,10 +59,12 @@ export async function deleteColumn(uid, workspaceId, projectId, columnId) {
 
 let _unsubCols    = null;
 let _unsubTags    = null;
+let _loadingTimer = null;
 const _taskUnsubs = new Map();
 const _tags       = new Map();
 const _cardCache  = new Map();   // columnId → { listEl, tasks, uid, workspaceId, projectId, columnId }
 const _colFilters = new Map();
+const _colLoaded  = new Set();   // columns that have already shown their first cards
 let _boardUid     = null;
 let _boardWsId    = null;
 let _boardProjId  = null;
@@ -114,11 +116,13 @@ function _cleanupTasks() {
   _taskUnsubs.forEach(fn => fn());
   _taskUnsubs.clear();
   _cardCache.clear();
+  _colLoaded.clear();
 }
 
 // ── Public ────────────────────────────────────────────────────────────────────
 
 export function destroyBoard() {
+  if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
   if (_unsubCols) { _unsubCols(); _unsubCols = null; }
   if (_unsubTags) { _unsubTags(); _unsubTags = null; }
   _cleanupTasks();
@@ -146,7 +150,11 @@ export function initBoard(uid, workspaceId, projectId) {
   _boardProjId = projectId;
 
   const boardEl = document.getElementById("board-area");
-  _showSkeleton(boardEl);
+  boardEl.innerHTML = "";
+  _loadingTimer = setTimeout(() => {
+    _loadingTimer = null;
+    boardEl.innerHTML = `<div class="board-loading"><div class="board-spinner"></div></div>`;
+  }, 280);
 
   // Subscrição de tags — re-renderiza cards ao mudar
   _unsubTags = getTags(uid, workspaceId, projectId, (tagsList) => {
@@ -158,6 +166,7 @@ export function initBoard(uid, workspaceId, projectId) {
   });
 
   _unsubCols = getColumns(uid, workspaceId, projectId, (columns) => {
+    if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
     _cleanupTasks();
     destroyDrag();
     boardEl.innerHTML = "";
@@ -165,8 +174,10 @@ export function initBoard(uid, workspaceId, projectId) {
     if (columns.length === 0) {
       boardEl.appendChild(_emptyColsEl());
     } else {
-      columns.forEach(col => {
+      columns.forEach((col, i) => {
         const colEl = _createColEl(col, uid, workspaceId, projectId);
+        colEl.classList.add("col-appear");
+        colEl.style.animationDelay = `${i * 60}ms`;
         boardEl.appendChild(colEl);
 
         initTaskDrag(colEl, uid, workspaceId, projectId);
@@ -183,31 +194,18 @@ export function initBoard(uid, workspaceId, projectId) {
       initColumnDrag(boardEl, uid, workspaceId, projectId);
     }
 
-    boardEl.appendChild(_addColWrap(uid, workspaceId, projectId));
+    boardEl.appendChild(_addColWrap(uid, workspaceId, projectId, columns.length));
   });
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function _showSkeleton(boardEl) {
-  boardEl.innerHTML = "";
-  for (let i = 0; i < 3; i++) {
-    const col = document.createElement("div");
-    col.className = "column";
-    col.innerHTML = `
-      <div class="col-header">
-        <div class="col-header-left">
-          <span class="sk-block sk-title"></span>
-        </div>
-      </div>
-      <ul class="task-list">
-        <li class="task-card sk-card"></li>
-        <li class="task-card sk-card sk-card--md"></li>
-        <li class="task-card sk-card sk-card--sm"></li>
-      </ul>
-    `;
-    boardEl.appendChild(col);
-  }
+function _colSkeletonCards() {
+  return `
+    <li class="task-card sk-card"></li>
+    <li class="task-card sk-card sk-card--md"></li>
+    <li class="task-card sk-card sk-card--sm"></li>
+  `;
 }
 
 // ── Empty states ──────────────────────────────────────────────────────────────
@@ -223,7 +221,7 @@ function _showNoProjects() {
 
 function _emptyColsEl() {
   const el = document.createElement("div");
-  el.className = "empty-board";
+  el.className = "empty-board col-appear";
   el.innerHTML = `
     <p class="empty-title">Nenhuma coluna ainda</p>
     <p class="empty-sub">Adicione uma coluna para começar a organizar suas tasks.</p>
@@ -274,7 +272,7 @@ function _createColEl(col, uid, workspaceId, projectId) {
         </div>
       </div>
     </div>
-    <ul class="task-list"></ul>
+    <ul class="task-list">${_colSkeletonCards()}</ul>
     <div class="col-hidden-notice hidden"></div>
     <div class="col-footer">
       <button class="btn-add-task">+ Adicionar task</button>
@@ -439,11 +437,19 @@ function _renderCards(listEl, tasks, uid, workspaceId, projectId, columnId) {
 
   listEl.innerHTML = "";
 
-  filtered.forEach(task => {
+  const firstLoad = !_colLoaded.has(columnId);
+  if (firstLoad) _colLoaded.add(columnId);
+
+  filtered.forEach((task, i) => {
     const li = document.createElement("li");
     li.className        = "task-card";
     li.dataset.taskId   = task.id;
     li.dataset.priority = task.priority || "";
+
+    if (firstLoad) {
+      li.classList.add("card-appear");
+      li.style.animationDelay = `${Math.min(i * 50, 300)}ms`;
+    }
 
     const total = task.subtaskCount || 0;
     const done  = task.subtaskDone  || 0;
@@ -592,9 +598,10 @@ function _showAddTaskInput(colEl, uid, workspaceId, projectId, columnId) {
 
 // ── Add column ────────────────────────────────────────────────────────────────
 
-function _addColWrap(uid, workspaceId, projectId) {
+function _addColWrap(uid, workspaceId, projectId, colCount = 0) {
   const wrap = document.createElement("div");
-  wrap.className = "add-col-wrap";
+  wrap.className = "add-col-wrap col-appear";
+  wrap.style.animationDelay = `${colCount * 60 + 40}ms`;
   _showAddColBtn(wrap, uid, workspaceId, projectId);
   return wrap;
 }
