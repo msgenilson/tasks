@@ -41,10 +41,12 @@ export function initTaskDrag(colEl, uid, workspaceId, projectId) {
   if (!list) return;
 
   const s = Sortable.create(list, {
-    group:       "tasks",
-    animation:   150,
-    ghostClass:  "task-ghost",
-    dragClass:   "task-dragging",
+    group:            "tasks",
+    animation:        150,
+    delay:            150,
+    delayOnTouchOnly: true,
+    ghostClass:       "task-ghost",
+    dragClass:        "task-dragging",
     onEnd: async (evt) => {
       const taskId    = evt.item.dataset.taskId;
       const fromColId = evt.from.closest(".column").dataset.colId;
