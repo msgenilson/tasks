@@ -624,6 +624,7 @@ html, body {
   padding: 10px 12px;
   cursor: pointer;
   border: 1px solid transparent;
+  user-select: none;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .task-card:hover {
