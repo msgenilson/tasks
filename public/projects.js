@@ -86,6 +86,7 @@ let _projects    = [];
 let _activeId    = null;
 let _open        = false;
 let _confirmId   = null;
+let _editId      = null;
 let _prevSelected = null;
 
 function _lsKey() { return `tasks_active_project_${_workspaceId}`; }
@@ -135,6 +136,7 @@ export function destroyProjects() {
   _activeId     = null;
   _open         = false;
   _confirmId    = null;
+  _editId       = null;
   _prevSelected = null;
   const el = document.getElementById("project-dropdown");
   if (el) el.innerHTML = "";
@@ -170,11 +172,13 @@ function _renderShell() {
 function _openMenu() {
   _open      = true;
   _confirmId = null;
+  _editId    = null;
   _renderContent();
 }
 function _closeMenu() {
   _open      = false;
   _confirmId = null;
+  _editId    = null;
   _renderContent();
 }
 
@@ -239,24 +243,64 @@ function _renderContent() {
         _confirmId = null;
         _renderContent();
       });
+    } else if (_editId === p.id) {
+      item.innerHTML = `
+        <input class="form-input item-edit-input" value="${esc(p.name)}" />
+        <button class="btn-confirm-yes">✓</button>
+        <button class="btn-confirm-no">✕</button>
+      `;
+      const input = item.querySelector(".item-edit-input");
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.focus();
+      input.select();
+
+      const save = async () => {
+        const name = input.value.trim();
+        if (!name || name === p.name) { _editId = null; _renderContent(); return; }
+        await updateProject(_uid, _workspaceId, p.id, { name });
+        _editId = null;
+      };
+
+      item.querySelector(".btn-confirm-yes").addEventListener("click", (e) => { e.stopPropagation(); save(); });
+      item.querySelector(".btn-confirm-no").addEventListener("click", (e) => { e.stopPropagation(); _editId = null; _renderContent(); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") save();
+        if (e.key === "Escape") { _editId = null; _renderContent(); }
+      });
+      input.addEventListener("blur", () => { setTimeout(save, 150); });
     } else {
       item.innerHTML = `
         <span class="item-name">${esc(p.name)}</span>
-        <button class="btn-del-proj" title="Deletar projeto">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6l-1 14H6L5 6"/>
-            <path d="M10 11v6M14 11v6"/>
-            <path d="M9 6V4h6v2"/>
-          </svg>
-        </button>
+        <div class="item-actions">
+          <button class="btn-edit-proj" title="Renomear projeto">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="btn-del-proj" title="Deletar projeto">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>
       `;
       item.querySelector(".item-name").addEventListener("click", (e) => {
         e.stopPropagation();
         _selectProject(p.id);
       });
+      item.querySelector(".btn-edit-proj").addEventListener("click", (e) => {
+        e.stopPropagation();
+        _confirmId = null;
+        _editId    = p.id;
+        _renderContent();
+      });
       item.querySelector(".btn-del-proj").addEventListener("click", (e) => {
         e.stopPropagation();
+        _editId    = null;
         _confirmId = p.id;
         _renderContent();
       });

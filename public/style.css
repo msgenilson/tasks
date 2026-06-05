@@ -317,6 +317,17 @@ html, body {
   padding: 2px 0;
 }
 
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.dropdown-item:hover .item-actions { opacity: 1; }
+
+.btn-edit-proj,
 .btn-del-proj {
   background: none;
   border: none;
@@ -326,12 +337,17 @@ html, body {
   border-radius: 4px;
   display: flex;
   align-items: center;
-  opacity: 0;
-  transition: opacity var(--transition), color var(--transition);
-  flex-shrink: 0;
+  transition: color var(--transition);
 }
-.dropdown-item:hover .btn-del-proj { opacity: 1; }
+.btn-edit-proj:hover { color: var(--text); }
 .btn-del-proj:hover { color: var(--danger); }
+
+.item-edit-input {
+  flex: 1;
+  padding: 2px 6px;
+  height: 26px;
+  font-size: 13px;
+}
 
 .confirm-msg {
   flex: 1;
