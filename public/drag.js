@@ -5,11 +5,29 @@ import {
 
 let _colSortable     = null;
 const _taskSortables = [];
+let _dragCurrentList = null;
+
+function _animateGhostEnter(toList, prevList) {
+  requestAnimationFrame(() => {
+    const ghost = toList.querySelector(".task-ghost");
+    if (!ghost) return;
+
+    const fromRect = prevList?.closest(".column")?.getBoundingClientRect();
+    const toRect   = toList.closest(".column")?.getBoundingClientRect();
+    const movingRight = !fromRect || !toRect || toRect.left > fromRect.left;
+
+    ghost.classList.remove("ghost-entering-l", "ghost-entering-r");
+    void ghost.offsetWidth; // força reflow para reiniciar a animação
+    ghost.classList.add(movingRight ? "ghost-entering-l" : "ghost-entering-r");
+  });
+}
 
 export function destroyDrag() {
   if (_colSortable) { _colSortable.destroy(); _colSortable = null; }
   _taskSortables.forEach(s => s.destroy());
   _taskSortables.length = 0;
+  _dragCurrentList = null;
+  document.body.style.cursor = "";
 }
 
 // ── Colunas ───────────────────────────────────────────────────────────────────
@@ -45,9 +63,24 @@ export function initTaskDrag(colEl, uid, workspaceId, projectId) {
     animation:        150,
     delay:            150,
     delayOnTouchOnly: true,
+    forceFallback:    true,
     ghostClass:       "task-ghost",
     dragClass:        "task-dragging",
+    onStart: (evt) => {
+      _dragCurrentList = evt.from;
+      document.body.style.cursor = "grabbing";
+    },
+    onMove: (evt) => {
+      if (evt.to !== _dragCurrentList) {
+        const prev = _dragCurrentList;
+        _dragCurrentList = evt.to;
+        _animateGhostEnter(evt.to, prev);
+      }
+    },
     onEnd: async (evt) => {
+      _dragCurrentList = null;
+      document.body.style.cursor = "";
+
       const taskId    = evt.item.dataset.taskId;
       const fromColId = evt.from.closest(".column").dataset.colId;
       const toColId   = evt.to.closest(".column").dataset.colId;

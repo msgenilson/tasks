@@ -911,14 +911,25 @@ html, body {
 }
 
 .task-ghost {
-  background: transparent !important;
+  background: var(--card) !important;
   border: 1.5px dashed var(--text-muted) !important;
   border-radius: var(--radius);
-  opacity: 1 !important;
+  opacity: 0.5 !important;
 }
 
+@keyframes ghost-enter-l {
+  from { transform: translateX(-20px); }
+  to   { transform: translateX(0); }
+}
+@keyframes ghost-enter-r {
+  from { transform: translateX(20px); }
+  to   { transform: translateX(0); }
+}
+.task-ghost.ghost-entering-l { animation: ghost-enter-l 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.task-ghost.ghost-entering-r { animation: ghost-enter-r 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 .task-dragging {
-  opacity: 0.4 !important;
+  opacity: 0 !important;
   cursor: grabbing !important;
 }
 
