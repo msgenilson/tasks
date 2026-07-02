@@ -104,8 +104,15 @@ function renderLoginForm() {
 export function initAuth(onLogin, onLogout) {
   renderLoginForm();
 
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
     if (user) {
+      // Força a renovação do ID token antes de liberar o app — logo após
+      // um login novo (signInWithEmailAndPassword/signInWithPopup), a
+      // conexão do Firestore pode ainda não ter sincronizado o token mais
+      // recente, causando "permission-denied" na primeira escrita mesmo
+      // com as regras corretas (some com um refresh da página porque aí a
+      // sessão já é restaurada com o token pronto desde o início).
+      await user.getIdToken(true);
       onLogin(user);
     } else {
       onLogout();

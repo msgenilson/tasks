@@ -2,8 +2,68 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // schema antigo — mantido até a Etapa 4 (limpeza)
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // schema novo
+    function isMember(workspaceId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    // "members" é declarado FORA (não aninhado dentro) de /workspaces/{id} —
+    // é isso que o Firestore exige para uma collection-group query enxergar
+    // a regra (workspaces.js:getWorkspaces usa collectionGroup(db,"members")
+    // pra descobrir em quais workspaces o uid logado está, sem saber os
+    // workspaceIds de antemão). Testado no emulador: um `match` aninhado sob
+    // /workspaces/{workspaceId} nunca casa com queries de collection-group,
+    // não importa a condição — só o padrão recursivo {path=**} funciona.
+    //
+    // A leitura do próprio doc de membership usa resource.data.uid (não
+    // path[1]/exists()) porque o Firestore só consegue provar a segurança de
+    // uma query de "list" casando o filtro da query (where uid==) com um
+    // campo de resource.data — variável de path ou exists() de outro
+    // documento não bastam para esse tipo de prova.
+    match /{path=**}/members/{memberId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if isMember(path[1]);
+      // só o owner cria/remove membros
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/workspaces/$(path[1])).data.ownerUid == request.auth.uid;
+    }
+
+    match /workspaces/{workspaceId} {
+      // Criar um workspace é avaliado contra o dado sendo ENVIADO
+      // (request.resource.data), não contra o estado atual — nesse momento
+      // ainda não existe doc de membership (isMember sempre seria falso, já
+      // que escritas no mesmo batch/transação não se enxergam umas às
+      // outras durante a avaliação de regras). Por isso quem cria vira dono
+      // só por declarar a si mesmo como ownerUid; ler/editar/deletar depois
+      // continua exigindo isMember normalmente.
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update, delete: if isMember(workspaceId);
+
+      // subcoleções listadas explicitamente (não um wildcard) — essas nunca
+      // são lidas via collection-group (sempre com workspaceId já conhecido
+      // no path), então o match aninhado normal funciona sem problema.
+      match /projects/{docId} {
+        allow read, write: if isMember(workspaceId);
+      }
+      match /tags/{docId} {
+        allow read, write: if isMember(workspaceId);
+      }
+      match /columns/{docId} {
+        allow read, write: if isMember(workspaceId);
+      }
+      match /tasks/{docId} {
+        allow read, write: if isMember(workspaceId);
+      }
+      match /subtasks/{docId} {
+        allow read, write: if isMember(workspaceId);
+      }
     }
   }
 }

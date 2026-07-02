@@ -7,6 +7,7 @@ import {
   updateDoc,
   onSnapshot,
   query,
+  where,
   orderBy,
   serverTimestamp,
   writeBatch,
@@ -14,8 +15,8 @@ import {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function projectsRef(uid, workspaceId) {
-  return collection(db, "users", uid, "workspaces", workspaceId, "projects");
+function projectsRef(workspaceId) {
+  return collection(db, "workspaces", workspaceId, "projects");
 }
 
 function esc(str) {
@@ -29,50 +30,51 @@ function esc(str) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function createProject(uid, workspaceId, name) {
-  return addDoc(projectsRef(uid, workspaceId), {
+  return addDoc(projectsRef(workspaceId), {
     name,
     order: Date.now(),
+    workspaceId,
     createdAt: serverTimestamp(),
   });
 }
 
 export function getProjects(uid, workspaceId, callback) {
-  const q = query(projectsRef(uid, workspaceId), orderBy("order"));
+  const q = query(projectsRef(workspaceId), orderBy("order"));
   return onSnapshot(q, (snap) =>
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
   );
 }
 
 export async function updateProject(uid, workspaceId, projectId, data) {
-  return updateDoc(
-    doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId),
-    data,
-  );
+  return updateDoc(doc(db, "workspaces", workspaceId, "projects", projectId), data);
 }
 
 export async function deleteProject(uid, workspaceId, projectId) {
   const batch = writeBatch(db);
+
   const colsSnap = await getDocs(
-    collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns"),
+    query(collection(db, "workspaces", workspaceId, "columns"), where("projectId", "==", projectId)),
   );
   for (const colDoc of colsSnap.docs) {
     const tasksSnap = await getDocs(
-      collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", colDoc.id, "tasks"),
+      query(collection(db, "workspaces", workspaceId, "tasks"), where("columnId", "==", colDoc.id)),
     );
     for (const taskDoc of tasksSnap.docs) {
       const subsSnap = await getDocs(
-        collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", colDoc.id, "tasks", taskDoc.id, "subtasks"),
+        query(collection(db, "workspaces", workspaceId, "subtasks"), where("taskId", "==", taskDoc.id)),
       );
       subsSnap.docs.forEach((s) => batch.delete(s.ref));
       batch.delete(taskDoc.ref);
     }
     batch.delete(colDoc.ref);
   }
+
   const tagsSnap = await getDocs(
-    collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "tags"),
+    query(collection(db, "workspaces", workspaceId, "tags"), where("projectId", "==", projectId)),
   );
   tagsSnap.docs.forEach((t) => batch.delete(t.ref));
-  batch.delete(doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId));
+
+  batch.delete(doc(db, "workspaces", workspaceId, "projects", projectId));
   return batch.commit();
 }
 

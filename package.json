@@ -1,0 +1,12 @@
+{
+  "name": "tasks-migration-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Scripts standalone de migração de schema do Firestore (não fazem parte do app estático em public/)",
+  "scripts": {
+    "migrate": "node migrate.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

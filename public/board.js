@@ -1,7 +1,7 @@
 import { db } from "./firebase.js";
 import {
   collection, doc, addDoc, getDocs, updateDoc, onSnapshot,
-  query, orderBy, writeBatch
+  query, where, orderBy, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getTasks, createTask, openDrawer, closeDrawer } from "./tasks.js";
 import { initColumnDrag, initTaskDrag, destroyDrag } from "./drag.js";
@@ -15,43 +15,38 @@ function esc(str) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function columnsRef(uid, workspaceId, projectId) {
-  return collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns");
+function columnsRef(workspaceId) {
+  return collection(db, "workspaces", workspaceId, "columns");
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function createColumn(uid, workspaceId, projectId, name) {
-  return addDoc(columnsRef(uid, workspaceId, projectId), { name, order: Date.now() });
+  return addDoc(columnsRef(workspaceId), { name, order: Date.now(), projectId, workspaceId });
 }
 
 export function getColumns(uid, workspaceId, projectId, callback) {
-  const q = query(columnsRef(uid, workspaceId, projectId), orderBy("order"));
+  const q = query(columnsRef(workspaceId), where("projectId", "==", projectId), orderBy("order"));
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 }
 
 export async function updateColumn(uid, workspaceId, projectId, columnId, data) {
-  return updateDoc(
-    doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId),
-    data
-  );
+  return updateDoc(doc(db, "workspaces", workspaceId, "columns", columnId), data);
 }
 
 export async function deleteColumn(uid, workspaceId, projectId, columnId) {
   const batch = writeBatch(db);
   const tasksSnap = await getDocs(
-    collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks")
+    query(collection(db, "workspaces", workspaceId, "tasks"), where("columnId", "==", columnId))
   );
   for (const taskDoc of tasksSnap.docs) {
     const subsSnap = await getDocs(
-      collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks", taskDoc.id, "subtasks")
+      query(collection(db, "workspaces", workspaceId, "subtasks"), where("taskId", "==", taskDoc.id))
     );
     subsSnap.docs.forEach(s => batch.delete(s.ref));
     batch.delete(taskDoc.ref);
   }
-  batch.delete(
-    doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId)
-  );
+  batch.delete(doc(db, "workspaces", workspaceId, "columns", columnId));
   return batch.commit();
 }
 
@@ -107,7 +102,7 @@ function _applyFilter(tasks, filter) {
     result = result.filter(t => filter.priorities.includes(t.priority || ""));
   }
   if (filter.tags.length > 0) {
-    result = result.filter(t => filter.tags.some(id => (t.tags || []).includes(id)));
+    result = result.filter(t => filter.tags.some(id => (t.tagIds || []).includes(id)));
   }
   return result;
 }
@@ -455,7 +450,7 @@ function _renderCards(listEl, tasks, uid, workspaceId, projectId, columnId) {
     const done  = task.subtaskDone  || 0;
     const pct   = total > 0 ? Math.round(done / total * 100) : 0;
 
-    const taskTags = (task.tags || []).map(id => _tags.get(id)).filter(Boolean);
+    const taskTags = (task.tagIds || []).map(id => _tags.get(id)).filter(Boolean);
 
     li.innerHTML = `
       ${taskTags.length ? `<div class="card-tags">${taskTags.map(t =>

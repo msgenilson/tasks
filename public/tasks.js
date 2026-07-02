@@ -1,7 +1,7 @@
 import { db } from "./firebase.js";
 import {
   collection, doc, addDoc, getDocs, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy, writeBatch, increment
+  onSnapshot, query, where, orderBy, writeBatch, increment
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getTags, createTag, deleteTag, TAG_COLORS } from "./tags.js";
 
@@ -13,72 +13,79 @@ function esc(str) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function tasksRef(uid, workspaceId, projectId, columnId) {
-  return collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks");
+function tasksRef(workspaceId) {
+  return collection(db, "workspaces", workspaceId, "tasks");
 }
 
-function subtasksRef(uid, workspaceId, projectId, columnId, taskId) {
-  return collection(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks", taskId, "subtasks");
+function subtasksRef(workspaceId) {
+  return collection(db, "workspaces", workspaceId, "subtasks");
 }
 
-function taskDoc(uid, workspaceId, projectId, columnId, taskId) {
-  return doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks", taskId);
+function taskDoc(workspaceId, taskId) {
+  return doc(db, "workspaces", workspaceId, "tasks", taskId);
 }
 
-function subtaskDoc(uid, workspaceId, projectId, columnId, taskId, subtaskId) {
-  return doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", columnId, "tasks", taskId, "subtasks", subtaskId);
+function subtaskDoc(workspaceId, subtaskId) {
+  return doc(db, "workspaces", workspaceId, "subtasks", subtaskId);
 }
 
 // ── CRUD tasks ────────────────────────────────────────────────────────────────
 
 export async function createTask(uid, workspaceId, projectId, columnId, title) {
-  return addDoc(tasksRef(uid, workspaceId, projectId, columnId), {
+  return addDoc(tasksRef(workspaceId), {
     title, description: "", order: Date.now(),
-    subtaskCount: 0, subtaskDone: 0
+    subtaskCount: 0, subtaskDone: 0,
+    projectId, columnId, workspaceId,
   });
 }
 
 export function getTasks(uid, workspaceId, projectId, columnId, callback) {
-  const q = query(tasksRef(uid, workspaceId, projectId, columnId), orderBy("order"));
+  const q = query(tasksRef(workspaceId), where("columnId", "==", columnId), orderBy("order"));
+  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+
+// Todas as tasks do workspace, sem filtro de coluna — usado no painel global.
+export function getAllTasks(uid, workspaceId, callback) {
+  const q = query(tasksRef(workspaceId), orderBy("order"));
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 }
 
 export async function updateTask(uid, workspaceId, projectId, columnId, taskId, data) {
-  return updateDoc(taskDoc(uid, workspaceId, projectId, columnId, taskId), data);
+  return updateDoc(taskDoc(workspaceId, taskId), data);
 }
 
 export async function deleteTask(uid, workspaceId, projectId, columnId, taskId) {
   const batch = writeBatch(db);
-  const subsSnap = await getDocs(subtasksRef(uid, workspaceId, projectId, columnId, taskId));
+  const subsSnap = await getDocs(query(subtasksRef(workspaceId), where("taskId", "==", taskId)));
   subsSnap.docs.forEach(s => batch.delete(s.ref));
-  batch.delete(taskDoc(uid, workspaceId, projectId, columnId, taskId));
+  batch.delete(taskDoc(workspaceId, taskId));
   return batch.commit();
 }
 
 // ── CRUD subtasks ─────────────────────────────────────────────────────────────
 
 export function getSubtasks(uid, workspaceId, projectId, columnId, taskId, callback) {
-  const q = query(subtasksRef(uid, workspaceId, projectId, columnId, taskId), orderBy("order"));
+  const q = query(subtasksRef(workspaceId), where("taskId", "==", taskId), orderBy("order"));
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 }
 
 export async function createSubtask(uid, workspaceId, projectId, columnId, taskId, title) {
-  await addDoc(subtasksRef(uid, workspaceId, projectId, columnId, taskId), { title, done: false, order: Date.now() });
-  await updateDoc(taskDoc(uid, workspaceId, projectId, columnId, taskId), { subtaskCount: increment(1) });
+  await addDoc(subtasksRef(workspaceId), { title, done: false, order: Date.now(), taskId, workspaceId });
+  await updateDoc(taskDoc(workspaceId, taskId), { subtaskCount: increment(1) });
 }
 
 export async function updateSubtask(uid, workspaceId, projectId, columnId, taskId, subtaskId, data) {
-  await updateDoc(subtaskDoc(uid, workspaceId, projectId, columnId, taskId, subtaskId), data);
+  await updateDoc(subtaskDoc(workspaceId, subtaskId), data);
   if (data.done !== undefined) {
-    await updateDoc(taskDoc(uid, workspaceId, projectId, columnId, taskId), {
+    await updateDoc(taskDoc(workspaceId, taskId), {
       subtaskDone: increment(data.done ? 1 : -1)
     });
   }
 }
 
 export async function deleteSubtask(uid, workspaceId, projectId, columnId, taskId, subtaskId, wasDone) {
-  await deleteDoc(subtaskDoc(uid, workspaceId, projectId, columnId, taskId, subtaskId));
-  await updateDoc(taskDoc(uid, workspaceId, projectId, columnId, taskId), {
+  await deleteDoc(subtaskDoc(workspaceId, subtaskId));
+  await updateDoc(taskDoc(workspaceId, taskId), {
     subtaskCount: increment(-1),
     ...(wasDone ? { subtaskDone: increment(-1) } : {})
   });
@@ -358,7 +365,7 @@ function _renderSubtaskItems(listEl, subtasks, columnId, uid, workspaceId, proje
 // ── Tags no drawer ────────────────────────────────────────────────────────────
 
 function _renderTagSection(sec, allTags, task, uid, workspaceId, projectId, columnId) {
-  const selected = new Set(task.tags || []);
+  const selected = new Set(task.tagIds || []);
 
   sec.innerHTML = `<label class="drawer-label">Tags</label>`;
 
@@ -373,12 +380,12 @@ function _renderTagSection(sec, allTags, task, uid, workspaceId, projectId, colu
       btn.innerHTML = `<span class="tag-dot"></span>${esc(tag.name)}`;
 
       btn.addEventListener("click", async () => {
-        const next = new Set(task.tags || []);
+        const next = new Set(task.tagIds || []);
         if (next.has(tag.id)) next.delete(tag.id);
         else next.add(tag.id);
-        task.tags = [...next];
+        task.tagIds = [...next];
         btn.classList.toggle("is-selected", next.has(tag.id));
-        await updateTask(uid, workspaceId, projectId, columnId, task.id, { tags: task.tags });
+        await updateTask(uid, workspaceId, projectId, columnId, task.id, { tagIds: task.tagIds });
       });
 
       const del = document.createElement("button");
@@ -389,9 +396,9 @@ function _renderTagSection(sec, allTags, task, uid, workspaceId, projectId, colu
         e.stopPropagation();
         await deleteTag(uid, workspaceId, projectId, tag.id);
         if (selected.has(tag.id)) {
-          const next = (task.tags || []).filter(id => id !== tag.id);
-          task.tags = next;
-          await updateTask(uid, workspaceId, projectId, columnId, task.id, { tags: next });
+          const next = (task.tagIds || []).filter(id => id !== tag.id);
+          task.tagIds = next;
+          await updateTask(uid, workspaceId, projectId, columnId, task.id, { tagIds: next });
         }
       });
       btn.appendChild(del);

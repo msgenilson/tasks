@@ -19,6 +19,7 @@ CLAUDE.md
 
 # Credenciais do Firebase (use firebase-config.example.js como base)
 public/firebase-config.js
+serviceAccount.json
 
 # Firebase config
 

@@ -1,6 +1,6 @@
 import { db } from "./firebase.js";
 import {
-  doc, getDoc, writeBatch
+  doc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 let _colSortable     = null;
@@ -43,7 +43,7 @@ export function initColumnDrag(boardEl, uid, workspaceId, projectId) {
       const batch = writeBatch(db);
       [...boardEl.querySelectorAll(".column")].forEach((el, i) => {
         batch.update(
-          doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", el.dataset.colId),
+          doc(db, "workspaces", workspaceId, "columns", el.dataset.colId),
           { order: i * 1000 }
         );
       });
@@ -87,32 +87,30 @@ export function initTaskDrag(colEl, uid, workspaceId, projectId) {
 
       if (fromColId === toColId && evt.oldIndex === evt.newIndex) return;
 
+      // No schema flat, uma task não muda de path ao trocar de coluna — só
+      // os campos columnId/order do mesmo doc em workspaces/{workspaceId}/tasks
+      // são atualizados. Não precisa mais de delete+recreate.
       const batch = writeBatch(db);
 
       if (fromColId === toColId) {
         [...evt.to.querySelectorAll(".task-card")].forEach((el, i) => {
           batch.update(
-            doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", toColId, "tasks", el.dataset.taskId),
+            doc(db, "workspaces", workspaceId, "tasks", el.dataset.taskId),
             { order: i * 1000 }
           );
         });
       } else {
-        const srcRef = doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", fromColId, "tasks", taskId);
-        const snap   = await getDoc(srcRef);
-        if (!snap.exists()) return;
-
         const toEls    = [...evt.to.querySelectorAll(".task-card")];
         const newOrder = toEls.findIndex(el => el.dataset.taskId === taskId) * 1000;
 
-        batch.set(
-          doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", toColId, "tasks", taskId),
-          { ...snap.data(), order: newOrder }
+        batch.update(
+          doc(db, "workspaces", workspaceId, "tasks", taskId),
+          { columnId: toColId, order: newOrder }
         );
-        batch.delete(srcRef);
 
         [...evt.from.querySelectorAll(".task-card")].forEach((el, i) => {
           batch.update(
-            doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", fromColId, "tasks", el.dataset.taskId),
+            doc(db, "workspaces", workspaceId, "tasks", el.dataset.taskId),
             { order: i * 1000 }
           );
         });
@@ -120,7 +118,7 @@ export function initTaskDrag(colEl, uid, workspaceId, projectId) {
         toEls.forEach((el, i) => {
           if (el.dataset.taskId === taskId) return;
           batch.update(
-            doc(db, "users", uid, "workspaces", workspaceId, "projects", projectId, "columns", toColId, "tasks", el.dataset.taskId),
+            doc(db, "workspaces", workspaceId, "tasks", el.dataset.taskId),
             { order: i * 1000 }
           );
         });

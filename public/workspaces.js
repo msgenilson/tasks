@@ -1,7 +1,7 @@
 import { db } from "./firebase.js";
 import {
-  collection, doc, addDoc, getDocs, updateDoc,
-  onSnapshot, query, orderBy, writeBatch
+  collection, collectionGroup, doc, getDoc, getDocs, setDoc, updateDoc,
+  onSnapshot, query, where, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 export const WORKSPACE_COLORS = [
@@ -11,52 +11,63 @@ export const WORKSPACE_COLORS = [
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-function workspacesRef(uid) {
-  return collection(db, "users", uid, "workspaces");
-}
-
+// Descobre os workspaces do usuário via collection-group query em "members"
+// (não há mais um array em users/{uid} listando isso — evita ter que manter
+// esse array sincronizado toda vez que a membership de um workspace muda).
 export function getWorkspaces(uid, callback) {
-  const q = query(workspacesRef(uid), orderBy("order"));
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  const q = query(collectionGroup(db, "members"), where("uid", "==", uid));
+  return onSnapshot(q, async (snap) => {
+    const workspaces = await Promise.all(
+      snap.docs.map(async (memberDoc) => {
+        // Um member doc recém-criado chega aqui primeiro como escrita local
+        // pendente (antes do servidor confirmar) — ler o workspace pai nesse
+        // instante pode falhar a regra (exists() ainda não vê o member doc
+        // no servidor). Ignora por ora; o snapshot dispara de novo assim que
+        // a escrita for confirmada, com hasPendingWrites=false.
+        if (memberDoc.metadata.hasPendingWrites) return null;
+        try {
+          const wsRef  = memberDoc.ref.parent.parent;
+          const wsSnap = await getDoc(wsRef);
+          return wsSnap.exists() ? { id: wsSnap.id, ...wsSnap.data() } : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    callback(
+      workspaces
+        .filter(Boolean)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    );
+  });
 }
 
 export async function createWorkspace(uid, name, color) {
-  return addDoc(workspacesRef(uid), { name, color, order: Date.now() });
+  // Duas escritas sequenciais (não um writeBatch): a regra do doc de
+  // membership exige que o workspace já exista com ownerUid definido, e
+  // escritas no mesmo batch não se enxergam umas às outras na avaliação de
+  // regras — só um commit real e concluído fica visível para a próxima.
+  const wsRef = doc(collection(db, "workspaces"));
+  await setDoc(wsRef, { name, color, order: Date.now(), ownerUid: uid, createdAt: serverTimestamp() });
+  await setDoc(doc(db, "workspaces", wsRef.id, "members", uid), {
+    uid, role: "owner", joinedAt: serverTimestamp()
+  });
+  return wsRef;
 }
 
 export async function updateWorkspace(uid, workspaceId, data) {
-  return updateDoc(doc(db, "users", uid, "workspaces", workspaceId), data);
+  return updateDoc(doc(db, "workspaces", workspaceId), data);
 }
 
 export async function deleteWorkspace(uid, workspaceId) {
   const batch = writeBatch(db);
-  const projsSnap = await getDocs(
-    collection(db, "users", uid, "workspaces", workspaceId, "projects")
-  );
-  for (const projDoc of projsSnap.docs) {
-    const colsSnap = await getDocs(
-      collection(db, "users", uid, "workspaces", workspaceId, "projects", projDoc.id, "columns")
-    );
-    for (const colDoc of colsSnap.docs) {
-      const tasksSnap = await getDocs(
-        collection(db, "users", uid, "workspaces", workspaceId, "projects", projDoc.id, "columns", colDoc.id, "tasks")
-      );
-      for (const taskDoc of tasksSnap.docs) {
-        const subsSnap = await getDocs(
-          collection(db, "users", uid, "workspaces", workspaceId, "projects", projDoc.id, "columns", colDoc.id, "tasks", taskDoc.id, "subtasks")
-        );
-        subsSnap.docs.forEach(s => batch.delete(s.ref));
-        batch.delete(taskDoc.ref);
-      }
-      batch.delete(colDoc.ref);
-    }
-    const tagsSnap = await getDocs(
-      collection(db, "users", uid, "workspaces", workspaceId, "projects", projDoc.id, "tags")
-    );
-    tagsSnap.docs.forEach(t => batch.delete(t.ref));
-    batch.delete(projDoc.ref);
+  const wsRef = doc(db, "workspaces", workspaceId);
+
+  for (const sub of ["projects", "tags", "columns", "tasks", "subtasks", "members"]) {
+    const snap = await getDocs(collection(wsRef, sub));
+    snap.docs.forEach(d => batch.delete(d.ref));
   }
-  batch.delete(doc(db, "users", uid, "workspaces", workspaceId));
+  batch.delete(wsRef);
   return batch.commit();
 }
 
