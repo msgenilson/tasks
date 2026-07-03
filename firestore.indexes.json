@@ -1,14 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "columns",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "projectId", "order": "ASCENDING" },
-        { "fieldPath": "order", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "tasks",
       "queryScope": "COLLECTION",
       "fields": [

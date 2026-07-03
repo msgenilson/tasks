@@ -703,6 +703,85 @@ html, body {
 }
 .add-col-btns { display: flex; gap: 6px; }
 
+.add-col-loading { color: var(--text-muted); font-size: 13px; padding: 10px 4px; display: block; }
+
+.btn-manage-cols {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 4px 0;
+  width: 100%;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition);
+}
+.btn-manage-cols:hover { color: var(--text); }
+
+.add-col-existing-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.add-col-existing-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.add-col-existing-pill {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  transition: border-color var(--transition), background var(--transition);
+}
+.add-col-existing-pill:hover { border-color: var(--accent); background: var(--surface); }
+.add-col-existing-sep { height: 1px; background: var(--border); margin: 2px 0; }
+
+/* ── Gerenciar colunas (dialog) ───────────────────────────────────────────── */
+
+.confirm-dialog--wide { width: 420px; max-width: calc(100vw - 32px); }
+
+.manage-cols-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manage-cols-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.manage-cols-name { font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.manage-cols-usage { font-size: 12px; color: var(--text-muted); flex: 1; }
+
+.btn-manage-cols-delete {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--danger);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.btn-manage-cols-delete:hover { background: var(--danger); color: #fff; }
+
+.btn-delete-col-error { background: var(--danger) !important; color: #fff !important; }
+
 /* ── User menu ────────────────────────────────────────────────────────────── */
 
 .user-menu-wrap {

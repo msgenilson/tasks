@@ -1,6 +1,6 @@
 import { db } from "./firebase.js";
 import {
-  doc, writeBatch
+  doc, updateDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 let _colSortable     = null;
@@ -40,14 +40,14 @@ export function initColumnDrag(boardEl, uid, workspaceId, projectId) {
     ghostClass:  "col-ghost",
     onEnd: async (evt) => {
       if (evt.oldIndex === evt.newIndex) return;
-      const batch = writeBatch(db);
-      [...boardEl.querySelectorAll(".column")].forEach((el, i) => {
-        batch.update(
-          doc(db, "workspaces", workspaceId, "columns", el.dataset.colId),
-          { order: i * 1000 }
-        );
-      });
-      await batch.commit();
+      // A ordem das colunas é por projeto: a posição no array
+      // visibleColumnIds do projeto, não um campo "order" na coluna (que é
+      // compartilhada entre projetos e não tem ordem própria).
+      const newOrder = [...boardEl.querySelectorAll(".column")].map(el => el.dataset.colId);
+      await updateDoc(
+        doc(db, "workspaces", workspaceId, "projects", projectId),
+        { visibleColumnIds: newOrder }
+      );
     }
   });
 }

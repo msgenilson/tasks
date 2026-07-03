@@ -411,6 +411,138 @@ ver colunas → criar task → arrastar → abrir drawer → editar título/desc
 
 ---
 
+## Etapa 3.5 — Colunas compartilhadas por workspace ✅ Concluída
+
+**Executada e testada manualmente.** `migrate-columns.js` rodou sobre os
+dados reais (12 workspaces, 10 projects, 19 columns processados) —
+colunas viraram `{ name, workspaceId }` e cada projeto ganhou
+`visibleColumnIds` ordenado, preservando a ordem visual que já existia.
+`board.js`/`drag.js`/`projects.js` atualizados; UI nova pra adicionar coluna
+já existente do workspace e tela de "Gerenciar colunas" pra deletar de vez.
+Índice composto antigo de `columns` (`projectId + order`) ficou órfão no
+Firebase — inofensivo, `firebase deploy --only firestore:indexes --force`
+removeria se quiser limpar depois.
+
+**Objetivo:** Colunas deixam de pertencer a um projeto específico e passam a
+ser um conjunto fixo por workspace — cada projeto escolhe quais colunas
+exibir, em vez de ter seu próprio conjunto isolado. Motivação: a Etapa 5
+(painel global) precisaria agrupar tasks de projetos diferentes por coluna,
+e hoje isso exigiria casar colunas pelo nome (frágil — dois projetos podem
+chamar a mesma etapa de fluxo de nomes diferentes, ou usar o mesmo nome pra
+coisas diferentes). Com colunas fixas por workspace, o agrupamento vira
+trivial e sem ambiguidade — mas essa mudança é independente da Etapa 5 em si
+e é tratada aqui separadamente.
+
+**Decisões de design já tomadas:**
+- **Ordem das colunas é por projeto.** Cada projeto tem sua própria ordem
+  pras colunas que exibe, mesmo compartilhando a coluna com outros projetos.
+  Implementado sem tabela de junção nem campo `order` separado: a ordem é
+  simplesmente a posição do `columnId` dentro do array `visibleColumnIds` do
+  projeto — arrays do Firestore preservam a ordem de inserção. Reordenar
+  vira só reescrever esse array com a nova sequência (`updateDoc` único no
+  doc do projeto), mais simples até do que o esquema anterior de campo
+  `order` em cada coluna.
+- **Esconder uma coluna com tasks é bloqueado.** Um projeto só pode remover
+  uma coluna da própria visibilidade se não houver nenhuma task *daquele
+  projeto* nela — evita tasks sumirem silenciosamente do board.
+- **Deletar é dividido em duas ações:** "Remover deste projeto" (só tira da
+  visibilidade — `arrayRemove` em `visibleColumnIds`, coluna continua
+  existindo pros outros projetos que a usam) e "Deletar coluna" (ação
+  separada, fora do board normal, que apaga o doc da coluna + todas as
+  tasks/subtasks associadas em *todos* os projetos que a usam, com aviso
+  mostrando quantos projetos/tasks serão afetados).
+
+**Schema atual → alvo:**
+
+```
+workspaces/{workspaceId}/
+  columns/{columnId}/
+    - name, workspaceId
+    - order                            ← REMOVIDO (ordem vira por projeto)
+    - projectId                        ← REMOVIDO
+
+  projects/{projectId}/
+    - name, order, workspaceId, createdAt
+    - visibleColumnIds: [columnId]     ← NOVO — ordenado, é a ordem de exibição
+```
+
+**Regras do Firestore:** nenhuma mudança necessária. A regra atual de
+`columns` já é `allow read, write: if isMember(workspaceId)` — não depende
+de `projectId` nem de `order`, então continua válida sem alteração.
+
+**Índices do Firestore:** o índice composto `columns: projectId + order`
+deixa de ser necessário (a query não filtra nem ordena mais no servidor) —
+remover do `firestore.indexes.json`. `getColumns` passa a ler todas as
+colunas do workspace de uma vez (volume baixo — app pessoal, sem `orderBy`)
+e ordenar client-side pela posição de cada uma em `visibleColumnIds`.
+
+**Script de migração — `migrate-columns.js` (novo, standalone):**
+
+1. Autenticar com Admin SDK.
+2. Para cada `workspaces/{workspaceId}/projects/{projectId}`:
+   - Buscar as `columns` que hoje têm `projectId == esse projeto`, ordenadas
+     pelo `order` atual delas.
+   - Setar `visibleColumnIds` no doc do projeto com os IDs **nessa ordem**
+     (a ordem do array é o que vai definir a exibição dali em diante).
+   - Remover os campos `projectId` e `order` de cada uma dessas colunas
+     (`FieldValue.delete()`).
+3. Logar cada mudança (projeto → colunas atribuídas, na ordem).
+4. Imprimir contagem final.
+
+Isso preserva o comportamento atual exatamente — nenhuma coluna vira
+compartilhada automaticamente, e a ordem de exibição de cada projeto
+continua a mesma de antes. Compartilhar colunas entre projetos passa a ser
+uma ação manual do usuário dali em diante, pela UI nova (abaixo). Roda uma
+vez sobre os dados já migrados na Etapa 1 (16 columns, 8 projects na base
+atual).
+
+**Mudanças no app:**
+
+`board.js`:
+- `getColumns(uid, workspaceId, projectId, callback)`: passa a observar o
+  doc do projeto (`onSnapshot` em `projects/{projectId}`) pra ler
+  `visibleColumnIds`, e as colunas do workspace (`onSnapshot`, sem `where`
+  nem `orderBy`) — combina os dois no client, ordenando pela posição de cada
+  `columnId` dentro de `visibleColumnIds`.
+- `createColumn(uid, workspaceId, projectId, name)`: cria a coluna sem
+  `projectId`/`order`, e adiciona o novo ID ao **final** de
+  `visibleColumnIds` do projeto via `arrayUnion` (duas escritas — mesmo
+  motivo de `createWorkspace` na Etapa 2/3: a segunda escrita depende do doc
+  criado na primeira já existir).
+- `updateColumn` (renomear): sem mudança de path, mas passa a afetar todos
+  os projetos que exibem essa coluna — considerar deixar isso explícito no
+  menu (ex: "Renomear (afeta N projetos)").
+- `deleteColumn` vira duas funções:
+  - `removeColumnFromProject`: `arrayRemove` em `visibleColumnIds`, sem
+    tocar no doc da coluna nem em tasks. Bloqueado se houver task do projeto
+    ativo com aquele `columnId` (checar antes de permitir).
+  - `deleteColumnEntirely`: doc da coluna + todas as tasks/subtasks
+    associadas (em todos os projetos) + `arrayRemove` em `visibleColumnIds`
+    de todo mundo que a tinha. Vive numa tela de gerenciamento do workspace,
+    não no menu "..." do board.
+
+`drag.js`:
+- Reordenar colunas deixa de ser um `writeBatch` atualizando `order` em cada
+  doc de coluna — vira um único `updateDoc` no projeto ativo, gravando
+  `visibleColumnIds` na nova sequência lida do DOM após o drop. Mais simples
+  que o esquema anterior.
+
+`projects.js`:
+- `createProject`: `visibleColumnIds` inicial é array vazio — projeto novo
+  começa sem colunas (o estado vazio "Nenhuma coluna ainda" já existe hoje e
+  cobre isso sem mudança visual).
+
+**UI nova necessária:**
+- No board, um jeito de escolher colunas *já existentes* do workspace pra
+  exibir no projeto atual (hoje só existe "+ Adicionar coluna", que sempre
+  cria uma coluna nova) — algo como um dropdown/dialog "Colunas do
+  workspace" listando todas com toggle mostrar/esconder por projeto.
+- Uma tela de gerenciamento de colunas do workspace (fora do board) pra
+  "Deletar coluna" de vez, mostrando quantos projetos/tasks são afetados
+  antes de confirmar.
+
+---
+
 ## Etapa 4 — Deletar dados do schema antigo
 
 **Objetivo:** Remover os dados do schema antigo **só depois** de confirmar
@@ -524,7 +656,8 @@ ser feito antes, depois, ou em paralelo, já que só adiciona campos a
 
 ## Notas para o Claude Code
 
-- Executar uma etapa por vez na ordem definida (Etapa 0 → 1 → 2 → 3 → 4 → 5).
+- Executar uma etapa por vez na ordem definida (Etapa 0 → 1 → 2 → 3 → 3.5 →
+  4 → 5). A Etapa 5 está deliberadamente pausada até a 3.5 terminar.
 - Etapas 0, 1 e 4 são scripts/operações standalone, não fazem parte do app.
 - Nunca deletar dados do Firestore sem script de cleanup auditável com logs.
 - Manter o app funcional ao final de cada etapa — sem etapas quebradas

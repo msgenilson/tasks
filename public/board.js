@@ -1,7 +1,7 @@
 import { db } from "./firebase.js";
 import {
-  collection, doc, addDoc, getDocs, updateDoc, onSnapshot,
-  query, where, orderBy, writeBatch
+  collection, doc, setDoc, getDoc, getDocs, updateDoc, onSnapshot,
+  query, where, writeBatch, arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getTasks, createTask, openDrawer, closeDrawer } from "./tasks.js";
 import { initColumnDrag, initTaskDrag, destroyDrag } from "./drag.js";
@@ -19,23 +19,104 @@ function columnsRef(workspaceId) {
   return collection(db, "workspaces", workspaceId, "columns");
 }
 
-// ── CRUD ─────────────────────────────────────────────────────────────────────
+function columnDoc(workspaceId, columnId) {
+  return doc(db, "workspaces", workspaceId, "columns", columnId);
+}
+
+function projectDoc(workspaceId, projectId) {
+  return doc(db, "workspaces", workspaceId, "projects", projectId);
+}
+
+// ── CRUD — colunas são compartilhadas pelo workspace; cada projeto guarda,
+// em visibleColumnIds, quais exibe e em que ordem (a posição no array É a
+// ordem — sem campo "order" separado, sem tabela de junção) ───────────────────
 
 export async function createColumn(uid, workspaceId, projectId, name) {
-  return addDoc(columnsRef(workspaceId), { name, order: Date.now(), projectId, workspaceId });
+  const colRef = doc(columnsRef(workspaceId));
+  await setDoc(colRef, { name, workspaceId });
+  await updateDoc(projectDoc(workspaceId, projectId), {
+    visibleColumnIds: arrayUnion(colRef.id),
+  });
+  return colRef;
+}
+
+// Todas as colunas do workspace (não filtradas por projeto) — usado pra
+// listar "colunas existentes" ao adicionar, e na tela de gerenciamento.
+export function getWorkspaceColumns(workspaceId, callback) {
+  return onSnapshot(columnsRef(workspaceId), snap =>
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  );
 }
 
 export function getColumns(uid, workspaceId, projectId, callback) {
-  const q = query(columnsRef(workspaceId), where("projectId", "==", projectId), orderBy("order"));
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  let latestVisible = null;
+  let latestCols    = null;
+
+  const emit = () => {
+    if (!latestVisible || !latestCols) return;
+    const byId = new Map(latestCols.map(c => [c.id, c]));
+    callback(latestVisible.map(id => byId.get(id)).filter(Boolean));
+  };
+
+  const unsubProject = onSnapshot(projectDoc(workspaceId, projectId), (snap) => {
+    latestVisible = snap.exists() ? (snap.data().visibleColumnIds || []) : [];
+    emit();
+  });
+  const unsubCols = getWorkspaceColumns(workspaceId, (cols) => {
+    latestCols = cols;
+    emit();
+  });
+
+  return () => { unsubProject(); unsubCols(); };
 }
 
 export async function updateColumn(uid, workspaceId, projectId, columnId, data) {
-  return updateDoc(doc(db, "workspaces", workspaceId, "columns", columnId), data);
+  return updateDoc(columnDoc(workspaceId, columnId), data);
 }
 
-export async function deleteColumn(uid, workspaceId, projectId, columnId) {
+// Tira a coluna da visibilidade DESTE projeto só — a coluna e as tasks dela
+// continuam existindo pros outros projetos que a exibem. Bloqueado se o
+// projeto ainda tiver tasks nessa coluna, pra elas não sumirem sem querer.
+export async function removeColumnFromProject(uid, workspaceId, projectId, columnId) {
+  const tasksSnap = await getDocs(
+    query(
+      collection(db, "workspaces", workspaceId, "tasks"),
+      where("columnId", "==", columnId),
+      where("projectId", "==", projectId)
+    )
+  );
+  if (!tasksSnap.empty) {
+    const err = new Error(`${tasksSnap.size} task${tasksSnap.size > 1 ? "s" : ""} nessa coluna`);
+    err.code = "column/has-tasks";
+    throw err;
+  }
+  return updateDoc(projectDoc(workspaceId, projectId), {
+    visibleColumnIds: arrayRemove(columnId),
+  });
+}
+
+export async function addExistingColumnToProject(workspaceId, projectId, columnId) {
+  return updateDoc(projectDoc(workspaceId, projectId), {
+    visibleColumnIds: arrayUnion(columnId),
+  });
+}
+
+// Quantos projetos exibem a coluna e quantas tasks (de qualquer projeto)
+// estão nela — usado pra avisar antes de deletar de vez.
+export async function getColumnUsage(workspaceId, columnId) {
+  const [projectsSnap, tasksSnap] = await Promise.all([
+    getDocs(query(collection(db, "workspaces", workspaceId, "projects"), where("visibleColumnIds", "array-contains", columnId))),
+    getDocs(query(collection(db, "workspaces", workspaceId, "tasks"), where("columnId", "==", columnId))),
+  ]);
+  return { projectCount: projectsSnap.size, taskCount: tasksSnap.size, projectDocs: projectsSnap.docs };
+}
+
+// Deleta a coluna de vez: doc da coluna + todas as tasks/subtasks nela (em
+// qualquer projeto) + remove de visibleColumnIds de todo mundo que a tinha.
+export async function deleteColumnEntirely(workspaceId, columnId) {
+  const { projectDocs } = await getColumnUsage(workspaceId, columnId);
   const batch = writeBatch(db);
+
   const tasksSnap = await getDocs(
     query(collection(db, "workspaces", workspaceId, "tasks"), where("columnId", "==", columnId))
   );
@@ -46,7 +127,9 @@ export async function deleteColumn(uid, workspaceId, projectId, columnId) {
     subsSnap.docs.forEach(s => batch.delete(s.ref));
     batch.delete(taskDoc.ref);
   }
-  batch.delete(doc(db, "workspaces", workspaceId, "columns", columnId));
+  batch.delete(columnDoc(workspaceId, columnId));
+  projectDocs.forEach(p => batch.update(p.ref, { visibleColumnIds: arrayRemove(columnId) }));
+
   return batch.commit();
 }
 
@@ -263,7 +346,7 @@ function _createColEl(col, uid, workspaceId, projectId) {
         </button>
         <div class="col-menu hidden">
           <button class="col-menu-item btn-rename-col">Renomear</button>
-          <button class="col-menu-item btn-delete-col">Deletar coluna</button>
+          <button class="col-menu-item btn-delete-col">Remover deste projeto</button>
         </div>
       </div>
     </div>
@@ -354,21 +437,31 @@ function _bindColEvents(el, col, uid, workspaceId, projectId) {
   let _deleteArmed = false;
   let _deleteTimer = null;
 
+  const _restoreDeleteBtn = () => {
+    _deleteArmed = false;
+    deleteBtn.textContent = "Remover deste projeto";
+    deleteBtn.classList.remove("btn-delete-col-confirm", "btn-delete-col-error");
+  };
+
   deleteBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!_deleteArmed) {
       _deleteArmed = true;
-      deleteBtn.textContent = "Confirmar exclusão?";
+      deleteBtn.textContent = "Confirmar remoção?";
       deleteBtn.classList.add("btn-delete-col-confirm");
-      _deleteTimer = setTimeout(() => {
-        _deleteArmed = false;
-        deleteBtn.textContent = "Deletar coluna";
-        deleteBtn.classList.remove("btn-delete-col-confirm");
-      }, 3000);
+      _deleteTimer = setTimeout(_restoreDeleteBtn, 3000);
     } else {
       clearTimeout(_deleteTimer);
-      menu.classList.add("hidden");
-      await deleteColumn(uid, workspaceId, projectId, col.id);
+      try {
+        await removeColumnFromProject(uid, workspaceId, projectId, col.id);
+        menu.classList.add("hidden");
+      } catch (err) {
+        deleteBtn.textContent = err.code === "column/has-tasks" ? `Mova ${err.message} antes` : "Erro ao remover";
+        deleteBtn.classList.remove("btn-delete-col-confirm");
+        deleteBtn.classList.add("btn-delete-col-error");
+        _deleteArmed = false;
+        _deleteTimer = setTimeout(_restoreDeleteBtn, 2500);
+      }
     }
   });
 
@@ -602,14 +695,36 @@ function _addColWrap(uid, workspaceId, projectId, colCount = 0) {
 }
 
 function _showAddColBtn(wrap, uid, workspaceId, projectId) {
-  wrap.innerHTML = `<button class="btn-add-col">+ Adicionar coluna</button>`;
+  wrap.innerHTML = `
+    <button class="btn-add-col">+ Adicionar coluna</button>
+    <button class="btn-manage-cols" title="Gerenciar colunas do workspace">Gerenciar colunas</button>
+  `;
   wrap.querySelector(".btn-add-col").addEventListener("click", () => _showAddColInput(wrap, uid, workspaceId, projectId));
+  wrap.querySelector(".btn-manage-cols").addEventListener("click", () => _showManageColumnsDialog(workspaceId));
 }
 
-function _showAddColInput(wrap, uid, workspaceId, projectId) {
+async function _showAddColInput(wrap, uid, workspaceId, projectId) {
+  wrap.innerHTML = `<div class="add-col-input-wrap"><span class="add-col-loading">Carregando…</span></div>`;
+
+  const [projSnap, allColsSnap] = await Promise.all([
+    getDoc(projectDoc(workspaceId, projectId)),
+    getDocs(columnsRef(workspaceId)),
+  ]);
+  const visibleIds = new Set(projSnap.exists() ? (projSnap.data().visibleColumnIds || []) : []);
+  const hidden = allColsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(c => !visibleIds.has(c.id));
+
   wrap.innerHTML = `
     <div class="add-col-input-wrap">
-      <input class="form-input" placeholder="Nome da coluna" />
+      ${hidden.length > 0 ? `
+        <div class="add-col-existing-label">Colunas existentes no workspace</div>
+        <div class="add-col-existing-list">
+          ${hidden.map(c => `<button class="add-col-existing-pill" data-col-id="${c.id}">+ ${esc(c.name)}</button>`).join("")}
+        </div>
+        <div class="add-col-existing-sep"></div>
+      ` : ""}
+      <input class="form-input" placeholder="Nome da coluna nova" />
       <div class="add-col-btns">
         <button class="btn-primary btn-sm">Adicionar</button>
         <button class="btn-ghost btn-sm">✕</button>
@@ -617,8 +732,15 @@ function _showAddColInput(wrap, uid, workspaceId, projectId) {
     </div>
   `;
 
+  wrap.querySelectorAll(".add-col-existing-pill").forEach(pill => {
+    pill.addEventListener("click", async () => {
+      await addExistingColumnToProject(workspaceId, projectId, pill.dataset.colId);
+      _showAddColBtn(wrap, uid, workspaceId, projectId);
+    });
+  });
+
   const input               = wrap.querySelector("input");
-  const [addBtn, cancelBtn] = wrap.querySelectorAll("button");
+  const [addBtn, cancelBtn] = wrap.querySelectorAll(".add-col-btns button");
   input.focus();
 
   const submit = async () => {
@@ -631,5 +753,73 @@ function _showAddColInput(wrap, uid, workspaceId, projectId) {
   input.addEventListener("keydown", e => {
     if (e.key === "Enter")  submit();
     if (e.key === "Escape") _showAddColBtn(wrap, uid, workspaceId, projectId);
+  });
+}
+
+// ── Gerenciar colunas (deletar de vez) ──────────────────────────────────────────
+
+async function _showManageColumnsDialog(workspaceId) {
+  let dialog = document.getElementById("manage-cols-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id        = "manage-cols-dialog";
+    dialog.className = "confirm-dialog confirm-dialog--wide";
+    document.body.appendChild(dialog);
+    dialog.addEventListener("click", e => { if (e.target === dialog) dialog.close(); });
+  }
+
+  dialog.innerHTML = `
+    <p class="confirm-dialog-title">Gerenciar colunas do workspace</p>
+    <p class="confirm-dialog-sub">Deletar aqui remove a coluna e as tasks dela de todos os projetos que a usam — não só deste.</p>
+    <div class="manage-cols-list"><span class="add-col-loading">Carregando…</span></div>
+    <div class="confirm-dialog-btns" style="margin-top:16px">
+      <button class="btn-ghost btn-sm btn-manage-cols-close">Fechar</button>
+    </div>
+  `;
+  dialog.querySelector(".btn-manage-cols-close").addEventListener("click", () => dialog.close());
+  dialog.showModal();
+
+  const listEl = dialog.querySelector(".manage-cols-list");
+  const colsSnap = await getDocs(columnsRef(workspaceId));
+  const cols = colsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  if (cols.length === 0) {
+    listEl.innerHTML = `<p class="confirm-dialog-sub">Nenhuma coluna neste workspace ainda.</p>`;
+    return;
+  }
+
+  const usages = await Promise.all(cols.map(c => getColumnUsage(workspaceId, c.id)));
+
+  listEl.innerHTML = cols.map((c, i) => `
+    <div class="manage-cols-item" data-col-id="${c.id}">
+      <span class="manage-cols-name">${esc(c.name)}</span>
+      <span class="manage-cols-usage">${usages[i].projectCount} projeto${usages[i].projectCount === 1 ? "" : "s"} · ${usages[i].taskCount} task${usages[i].taskCount === 1 ? "" : "s"}</span>
+      <button class="btn-manage-cols-delete">Deletar</button>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll(".manage-cols-item").forEach(item => {
+    const columnId = item.dataset.colId;
+    const btn = item.querySelector(".btn-manage-cols-delete");
+    let armed = false;
+    let timer = null;
+
+    btn.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        btn.textContent = "Confirmar?";
+        btn.classList.add("btn-delete-col-confirm");
+        timer = setTimeout(() => {
+          armed = false;
+          btn.textContent = "Deletar";
+          btn.classList.remove("btn-delete-col-confirm");
+        }, 3000);
+      } else {
+        clearTimeout(timer);
+        btn.disabled = true;
+        await deleteColumnEntirely(workspaceId, columnId);
+        item.remove();
+      }
+    });
   });
 }

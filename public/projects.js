@@ -35,6 +35,7 @@ export async function createProject(uid, workspaceId, name) {
     order: Date.now(),
     workspaceId,
     createdAt: serverTimestamp(),
+    visibleColumnIds: [],
   });
 }
 
