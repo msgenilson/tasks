@@ -1,4 +1,9 @@
-const CACHE = "tasks-v1";
+// Bump este número sempre que algum arquivo em SHELL mudar — é o que faz o
+// navegador perceber que o sw.js tem bytes diferentes e buscar a versão nova
+// no servidor (senão o worker antigo, com o cache antigo, fica valendo pra
+// sempre). Ver /sw.js no firebase.json: Cache-Control no-cache garante que
+// essa checagem de bytes nunca usa uma cópia de sw.js desatualizada.
+const CACHE = "tasks-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -8,12 +13,14 @@ const SHELL = [
   "./icon-192.png",
   "./icon-512.png",
   "./firebase.js",
+  "./firebase-config.js",
   "./auth.js",
   "./app.js",
   "./workspaces.js",
   "./projects.js",
   "./profile.js",
   "./board.js",
+  "./globalview.js",
   "./tasks.js",
   "./tags.js",
   "./drag.js",
