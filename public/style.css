@@ -124,6 +124,79 @@ html, body {
   gap: 16px;
 }
 
+/* ── Global view (toggle na navbar) ──────────────────────────────────────── */
+
+.global-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.global-view-btn:hover     { border-color: var(--text-muted); color: var(--text); }
+.global-view-btn.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.global-view-area {
+  margin-top: var(--navbar-h);
+  height: calc(100vh - var(--navbar-h));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gv-filters {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.gv-filter-group { display: flex; flex-direction: column; gap: 6px; }
+.gv-filter-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.gv-filter-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.gv-pill {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 11px;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.gv-pill:hover    { border-color: var(--accent); color: var(--text); }
+.gv-pill.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Kanban geral — reaproveita .column/.task-list/.task-card do board normal;
+   só o container muda (sem "+ adicionar coluna/task" aqui, é cross-project). */
+.gv-board {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  align-items: stretch;
+  padding: 24px;
+  gap: 16px;
+}
+
+.gv-card-project {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-radius: 99px;
+  padding: 2px 8px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
 /* Auth screen */
 .auth-screen {
   position: fixed;

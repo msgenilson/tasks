@@ -5,6 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "columnId", "order": "ASCENDING" },
+        { "fieldPath": "projectId", "order": "ASCENDING" },
         { "fieldPath": "order", "order": "ASCENDING" }
       ]
     },

@@ -54,7 +54,7 @@ export function initColumnDrag(boardEl, uid, workspaceId, projectId) {
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 
-export function initTaskDrag(colEl, uid, workspaceId, projectId) {
+export function initTaskDrag(colEl, uid, workspaceId) {
   const list = colEl.querySelector(".task-list");
   if (!list) return;
 

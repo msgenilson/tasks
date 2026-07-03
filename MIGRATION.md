@@ -570,29 +570,70 @@ do `firestore.rules`.
 
 ---
 
-## Etapa 5 — Painel global de tasks
+## Etapa 5 — Painel global de tasks ✅ Concluída
 
 **Objetivo:** Nova view mostrando todas as tasks de todos os projetos do
-workspace ativo.
+workspace ativo, agrupadas por coluna — só faz sentido depois da Etapa 3.5,
+já que antes cada projeto tinha suas próprias colunas com nomes potencialmente
+inconsistentes entre si.
 
-**UI:**
+**UI — kanban, não lista.** A primeira versão foi uma lista vertical
+agrupada por coluna; a versão final virou um **kanban de verdade**: colunas
+lado a lado, cards arrastáveis, igual ao board normal — só que cruzando
+todos os projetos do workspace.
 
-- Novo item no navbar: "Todas as tasks" (ou ícone de lista).
-- Alterna entre a view kanban normal e a view global.
-- View global: lista vertical, agrupada por projeto.
-- Cada item exibe: título, projeto (badge colorido), coluna atual, progresso
-  de subtarefas.
-- Filtros no topo: por projeto, por status de subtarefas (com pendentes,
-  todas concluídas).
-- Clique no item abre o mesmo drawer lateral da view kanban.
+- Novo item no navbar: botão "Todas as tasks" (ícone de lista), alternando
+  entre o board normal e o kanban geral.
+- Kanban geral: uma coluna por coluna do workspace (união de todas, não só
+  as do projeto ativo), cada uma com os cards de **todos os projetos** que
+  têm task ali.
+- Ordenação das colunas: alfabética pelo nome — colunas deixaram de ter um
+  campo `order` próprio na Etapa 3.5 (virou por-projeto), e o kanban geral
+  não pertence a nenhum projeto específico pra usar como referência. Sem
+  drag de coluna aqui (só cards) — não haveria onde persistir uma ordem de
+  coluna nesse contexto cross-project.
+- Cada card mostra: badge com o nome do projeto, prioridade, título,
+  progresso de subtarefas — mesmo visual do card do board normal, com o
+  badge de projeto a mais.
+- **Drag-and-drop entre colunas funciona igual ao board normal** — mover um
+  card muda `columnId`/`order` da task, independente de projeto.
+- Sem "+ Adicionar task"/"+ Adicionar coluna" aqui — criar é ambíguo sem um
+  projeto de contexto; continua só pelo board normal.
+- Filtros no topo: por projeto (multi-select) e por status de subtarefas
+  (todas / com pendentes / todas concluídas).
+- Clique num card abre o mesmo drawer lateral do board normal.
 
 **Implementação:**
 
-- Usar `getAllTasks(workspaceId, callback)` criado na Etapa 3.
-- `onSnapshot` único retornando todas as tasks do workspace.
-- Agrupar e ordenar no client por `projectId` e depois por `order` (nomes de
-  projeto vêm do `getProjects` já carregado).
-- Reutilizar o drawer de task existente sem duplicar código.
+- Novo módulo `globalview.js` (mantém `board.js` do tamanho que já está).
+- Reaproveita `initTaskDrag`/`destroyDrag` de `drag.js` sem duplicar lógica
+  de drag — só foi preciso remover o parâmetro `projectId` de
+  `initTaskDrag`, que já não era usado no corpo da função desde a Etapa 3.5
+  (mover task entre colunas não depende mais de projeto).
+- **Atenção**: `drag.js` guarda os Sortables ativos num estado único do
+  módulo (não por-view) — por isso o board normal e o kanban geral nunca
+  ficam montados ao mesmo tempo. Trocar de view via `app.js` destrói uma
+  view inteira (`destroyBoard()`/`destroyGlobalView()`) antes de montar a
+  outra, em vez de só esconder com CSS.
+- `getAllTasks(uid, workspaceId, callback)` (já existe em `tasks.js` desde a
+  Etapa 3) + `getWorkspaceColumns(workspaceId, callback)` (já existe em
+  `board.js` desde a Etapa 3.5) + `getProjects(uid, workspaceId, callback)`
+  (já existe em `projects.js`).
+- Agrupar tasks por `columnId` no client. Tasks cujo `columnId` não bate com
+  nenhuma coluna existente (não deveria acontecer, mas é defensivo) caem num
+  grupo "Sem coluna".
+- Reutilizar `openDrawer`/`closeDrawer` de `tasks.js` sem duplicar código.
+
+**Bug encontrado no teste manual e corrigido:** `tasks.js:getTasks` (usada
+pelo board normal de cada projeto) filtrava as tasks só por `columnId` —
+correto antes da Etapa 3.5, quando cada coluna pertencia a um único projeto.
+Depois de colunas virarem compartilhadas, se dois projetos exibem a mesma
+coluna, o board de um passava a mostrar também as tasks do outro nessa
+coluna, já que a query não distinguia por projeto. Corrigido adicionando
+`where("projectId", "==", projectId)` à query — exigiu um índice composto
+novo (`columnId + projectId + order`), já deployado. `getAllTasks` (usada
+pelo kanban geral) não tinha esse problema — ali é intencional mostrar tasks
+de todos os projetos.
 
 ---
 

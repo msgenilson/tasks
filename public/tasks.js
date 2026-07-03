@@ -40,7 +40,15 @@ export async function createTask(uid, workspaceId, projectId, columnId, title) {
 }
 
 export function getTasks(uid, workspaceId, projectId, columnId, callback) {
-  const q = query(tasksRef(workspaceId), where("columnId", "==", columnId), orderBy("order"));
+  // Colunas são compartilhadas entre projetos desde a Etapa 3.5 — filtrar só
+  // por columnId misturaria tasks de outros projetos que também exibem essa
+  // coluna. projectId é necessário aqui, não é redundante.
+  const q = query(
+    tasksRef(workspaceId),
+    where("columnId", "==", columnId),
+    where("projectId", "==", projectId),
+    orderBy("order")
+  );
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 }
 

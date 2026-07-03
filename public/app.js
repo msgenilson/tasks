@@ -2,13 +2,17 @@ import { initAuth, logout } from "./auth.js";
 import { initWorkspaces, destroyWorkspaces, closeWorkspaceDropdown } from "./workspaces.js";
 import { initProjects, destroyProjects, closeProjectDropdown } from "./projects.js";
 import { initBoard, destroyBoard } from "./board.js";
+import { initGlobalView, destroyGlobalView } from "./globalview.js";
 import { getProfile, saveProfile } from "./profile.js";
 
-const authScreen   = document.getElementById("auth-screen");
-const appEl        = document.getElementById("app");
-const userMenuWrap = document.getElementById("user-menu-wrap");
-const userMenuBtn  = document.getElementById("user-menu-btn");
-const userMenuEl   = document.getElementById("user-menu");
+const authScreen    = document.getElementById("auth-screen");
+const appEl         = document.getElementById("app");
+const userMenuWrap  = document.getElementById("user-menu-wrap");
+const userMenuBtn   = document.getElementById("user-menu-btn");
+const userMenuEl    = document.getElementById("user-menu");
+const boardArea     = document.getElementById("board-area");
+const globalViewArea = document.getElementById("global-view-area");
+const globalViewBtn = document.getElementById("global-view-btn");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,6 +35,49 @@ applyTheme(localStorage.getItem("kanban_theme") || "dark");
 
 let _currentUser    = null;
 let _currentProfile = null;
+
+// ── View global (todas as tasks do workspace, kanban por coluna) ───────────────
+//
+// board.js e globalview.js compartilham o mesmo drag.js (que guarda os
+// Sortables ativos num estado único do módulo) — por isso as duas views
+// nunca ficam montadas ao mesmo tempo: trocar de view destrói uma
+// completamente antes de montar a outra, em vez de só esconder com CSS.
+
+let _currentWorkspaceId = null;
+let _currentProjectId   = null;
+let _viewMode = "board"; // "board" | "global"
+
+function _setViewModeUI(mode) {
+  _viewMode = mode;
+  if (mode === "global") {
+    globalViewBtn.classList.add("is-active");
+    boardArea.classList.add("hidden");
+    globalViewArea.classList.remove("hidden");
+  } else {
+    globalViewBtn.classList.remove("is-active");
+    globalViewArea.classList.add("hidden");
+    boardArea.classList.remove("hidden");
+  }
+}
+
+function _showBoardView() {
+  destroyGlobalView();
+  _setViewModeUI("board");
+  if (_currentUser && _currentWorkspaceId) {
+    initBoard(_currentUser.uid, _currentWorkspaceId, _currentProjectId);
+  }
+}
+
+function _showGlobalView() {
+  if (!_currentUser || !_currentWorkspaceId) return;
+  destroyBoard();
+  _setViewModeUI("global");
+  initGlobalView(_currentUser.uid, _currentWorkspaceId);
+}
+
+globalViewBtn.addEventListener("click", () => {
+  _viewMode === "global" ? _showBoardView() : _showGlobalView();
+});
 
 function _menuInitial() {
   const name = _currentProfile?.name || _currentUser?.email?.split("@")[0] || "?";
@@ -205,10 +252,17 @@ initAuth(
     userMenuBtn.textContent = _menuInitial();
 
     initWorkspaces(user.uid, (wsId) => {
+      _currentWorkspaceId = wsId;
+      _currentProjectId   = null;
+      destroyGlobalView();
+      _setViewModeUI("board");
       destroyProjects();
       destroyBoard();
       if (!wsId) return;
-      initProjects(user.uid, wsId, (projId) => initBoard(user.uid, wsId, projId));
+      initProjects(user.uid, wsId, (projId) => {
+        _currentProjectId = projId;
+        if (_viewMode === "board") initBoard(user.uid, wsId, projId);
+      });
     });
   },
   () => {
@@ -216,8 +270,11 @@ initAuth(
     appEl.classList.add("hidden");
     _currentUser    = null;
     _currentProfile = null;
+    _currentWorkspaceId = null;
+    _currentProjectId   = null;
     userMenuBtn.textContent = "?";
     _closeUserMenu();
+    _showBoardView();
     destroyWorkspaces();
     destroyProjects();
     destroyBoard();

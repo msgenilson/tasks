@@ -258,7 +258,7 @@ export function initBoard(uid, workspaceId, projectId) {
         colEl.style.animationDelay = `${i * 60}ms`;
         boardEl.appendChild(colEl);
 
-        initTaskDrag(colEl, uid, workspaceId, projectId);
+        initTaskDrag(colEl, uid, workspaceId);
 
         const unsub = getTasks(uid, workspaceId, projectId, col.id, (tasks) => {
           const list    = colEl.querySelector(".task-list");
