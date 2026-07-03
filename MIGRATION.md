@@ -577,13 +577,18 @@ workspace ativo, agrupadas por coluna — só faz sentido depois da Etapa 3.5,
 já que antes cada projeto tinha suas próprias colunas com nomes potencialmente
 inconsistentes entre si.
 
-**UI — kanban, não lista.** A primeira versão foi uma lista vertical
-agrupada por coluna; a versão final virou um **kanban de verdade**: colunas
-lado a lado, cards arrastáveis, igual ao board normal — só que cruzando
-todos os projetos do workspace.
+**UI — kanban, não lista, sem botão separado.** Passou por duas revisões:
+primeiro uma lista vertical agrupada por coluna, depois um kanban de verdade
+(colunas lado a lado, cards arrastáveis, igual ao board normal, cruzando
+projetos) acionado por um botão de toggle na navbar. A versão final tirou
+esse botão — "Todos" virou um item a mais no dropdown de projetos (topo da
+lista, com um separador), ao lado dos projetos normais.
 
-- Novo item no navbar: botão "Todas as tasks" (ícone de lista), alternando
-  entre o board normal e o kanban geral.
+- "Todos" é um pseudo-projeto no dropdown (`ALL_PROJECTS_ID = "__all__"` em
+  `projects.js`) — sem botões de renomear/deletar, seleção persiste na mesma
+  chave de `localStorage` que já guardava o projeto ativo. Selecionar "Todos"
+  mostra o kanban geral; selecionar um projeto normal volta pro board dele —
+  um seletor só, em vez de dropdown + botão separado.
 - Kanban geral: uma coluna por coluna do workspace (união de todas, não só
   as do projeto ativo), cada uma com os cards de **todos os projetos** que
   têm task ali.

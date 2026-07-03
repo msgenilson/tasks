@@ -124,22 +124,7 @@ html, body {
   gap: 16px;
 }
 
-/* ── Global view (toggle na navbar) ──────────────────────────────────────── */
-
-.global-view-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 6px 8px;
-  transition: border-color var(--transition), color var(--transition), background var(--transition);
-}
-.global-view-btn:hover     { border-color: var(--text-muted); color: var(--text); }
-.global-view-btn.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* ── Global view (item "Todos" no dropdown de projetos) ──────────────────── */
 
 .global-view-area {
   margin-top: var(--navbar-h);
@@ -379,6 +364,12 @@ html, body {
 }
 .dropdown-item:hover { background: var(--card); }
 .dropdown-item.is-active { background: rgba(91,106,240,0.1); }
+
+.dropdown-item--all { cursor: pointer; color: var(--text-muted); }
+.dropdown-item--all:hover, .dropdown-item--all.is-active { color: var(--text); }
+.dropdown-item--all svg { flex-shrink: 0; }
+
+.dropdown-sep { height: 1px; background: var(--border); margin: 4px 10px; }
 
 .item-name {
   flex: 1;

@@ -13,6 +13,11 @@ import {
   writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+// Pseudo-projeto: representa "ver todas as tasks do workspace" (kanban geral
+// cruzando projetos). Persistido na mesma chave de localStorage do projeto
+// ativo — pra quem chama initProjects, é só mais um id possível.
+export const ALL_PROJECTS_ID = "__all__";
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function projectsRef(workspaceId) {
@@ -112,7 +117,7 @@ export function initProjects(uid, workspaceId, onSelect) {
   _unsub = getProjects(uid, workspaceId, (projects) => {
     _projects = projects;
 
-    if (_activeId && !projects.find((p) => p.id === _activeId)) {
+    if (_activeId && _activeId !== ALL_PROJECTS_ID && !projects.find((p) => p.id === _activeId)) {
       _activeId = projects[0]?.id ?? null;
     }
     if (!_activeId && projects.length > 0) {
@@ -206,8 +211,9 @@ function _renderContent() {
   if (!nameEl || !menu) return;
 
   const active = _projects.find((p) => p.id === _activeId);
-  nameEl.textContent =
-    active?.name ?? (_projects.length === 0 ? "Sem projetos" : "Selecionar");
+  nameEl.textContent = _activeId === ALL_PROJECTS_ID
+    ? "Todos"
+    : (active?.name ?? (_projects.length === 0 ? "Sem projetos" : "Selecionar"));
 
   if (!_loaded) {
     _loaded = true;
@@ -223,6 +229,22 @@ function _renderContent() {
   }
   menu.classList.remove("hidden");
   menu.innerHTML = "";
+
+  const allItem = document.createElement("div");
+  allItem.className = "dropdown-item dropdown-item--all" + (_activeId === ALL_PROJECTS_ID ? " is-active" : "");
+  allItem.innerHTML = `
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    <span class="item-name">Todos</span>
+  `;
+  allItem.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _selectProject(ALL_PROJECTS_ID);
+  });
+  menu.appendChild(allItem);
+  menu.appendChild(Object.assign(document.createElement("div"), { className: "dropdown-sep" }));
 
   if (_projects.length === 0) {
     const empty = document.createElement("div");
